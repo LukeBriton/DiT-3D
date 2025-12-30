@@ -16,4 +16,4 @@ python test.py --dataroot ../ShapeNetCore.v2.PC15k/ \
     --model_type 'DiT-S/4' \
     --voxel_size 32 \
     --model "./DiT-S-4.pth" \
-    --gpu 0
+    --distribution_type 'multi'
