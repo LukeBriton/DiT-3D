@@ -15,7 +15,8 @@ from copy import deepcopy
 from collections import OrderedDict
 
 from models.dit3d import DiT3D_models
-from models.dit3d_window_attn import DiT3D_models_WindAttn
+# from models.dit3d_window_attn import DiT3D_models_WindAttn
+from models.dic3d import DiC3D_models
 
 from tensorboardX import SummaryWriter
 
@@ -412,13 +413,21 @@ class Model(nn.Module):
         super(Model, self).__init__()
         self.diffusion = GaussianDiffusion(betas, loss_type, model_mean_type, model_var_type)
 
-        if args.window_size > 0:
-            self.model = DiT3D_models_WindAttn[args.model_type](pretrained=args.use_pretrained, 
-                                                   input_size=args.voxel_size, 
-                                                   window_size=args.window_size, 
-                                                   window_block_indexes=args.window_block_indexes, 
-                                                   num_classes=args.num_classes
-                                                )
+        if args.model_type in DiC3D_models:
+            self.model = DiC3D_models[args.model_type](
+                input_size=args.voxel_size,
+                in_channels=args.nc,
+                num_classes=args.num_classes,
+                dic_in_channels=args.dic_in_channels,
+                dic_learn_sigma=args.dic_learn_sigma,
+            )
+        # elif args.window_size > 0:
+        #     self.model = DiT3D_models_WindAttn[args.model_type](pretrained=args.use_pretrained, 
+        #                                            input_size=args.voxel_size, 
+        #                                            window_size=args.window_size, 
+        #                                            window_block_indexes=args.window_block_indexes, 
+        #                                            num_classes=args.num_classes
+        #                                         )
         else:
             self.model = DiT3D_models[args.model_type](pretrained=args.use_pretrained, 
                                                     input_size=args.voxel_size, 
@@ -608,6 +617,14 @@ def train(gpu, opt, output_dir, noises_init):
 
     betas = get_betas(opt.schedule_type, opt.beta_start, opt.beta_end, opt.time_num)
     model = Model(opt, betas, opt.loss_type, opt.model_mean_type, opt.model_var_type)
+
+    if opt.dic_ckpt and hasattr(model.model, "load_dic_checkpoint"):
+        msg, skipped = model.model.load_dic_checkpoint(opt.dic_ckpt, use_ema=opt.dic_use_ema)
+        if should_diag:
+            logger.info(f"Loaded DiC checkpoint from {opt.dic_ckpt}")
+            logger.info(f"DiC load_state_dict: {msg}")
+            if skipped:
+                logger.info(f"DiC skipped keys (shape/name mismatch): {len(skipped)}")
     
     # Note that parameter initialization is done within the DiT constructor
     if opt.use_ema:
@@ -860,12 +877,13 @@ def parse_args():
     parser.add_argument('--workers', type=int, default=16, help='workers')
     parser.add_argument('--niter', type=int, default=10000, help='number of epochs to train for')
 
-    parser.add_argument('--nc', default=3)
+    parser.add_argument('--nc', type=int, default=3)
     parser.add_argument('--npoints', default=2048)
     parser.add_argument("--voxel_size", type=int, choices=[16, 32, 64, 128, 256], default=32)
     
     '''model'''
-    parser.add_argument("--model_type", type=str, choices=list(DiT3D_models.keys()), default="DiT-XL/2")
+    model_choices = list(DiT3D_models.keys()) + list(DiC3D_models.keys())
+    parser.add_argument("--model_type", type=str, choices=model_choices, default="DiT-XL/2")
     parser.add_argument('--beta_start', default=0.0001)
     parser.add_argument('--beta_end', default=0.02)
     parser.add_argument('--schedule_type', default='linear')
@@ -920,6 +938,10 @@ def parse_args():
     parser.add_argument('--use_tb', action='store_true', default=False, help = 'use tensorboard')
     parser.add_argument('--use_pretrained', action='store_true', default=False, help = 'use pretrained 2d DiT weights')
     parser.add_argument('--use_ema', action='store_true', default=False, help = 'use ema')
+    parser.add_argument('--dic_ckpt', default='', help='path to DiC checkpoint for DiC-3D initialization')
+    parser.add_argument('--dic_use_ema', action='store_true', default=False, help='load ema weights from DiC ckpt if available')
+    parser.add_argument('--dic_in_channels', type=int, default=None, help='input channels expected by DiC (defaults to --nc)')
+    parser.add_argument('--dic_learn_sigma', action='store_true', default=False, help='use DiC learn_sigma (adapters will map output to --nc)')
 
     opt = parser.parse_args()
 

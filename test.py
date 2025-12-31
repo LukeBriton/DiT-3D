@@ -19,6 +19,7 @@ from tqdm import tqdm
 
 from datasets.shapenet_data_pc import ShapeNet15kPointClouds
 from models.dit3d import DiT3D_models
+from models.dic3d import DiC3D_models
 from utils.misc import Evaluator
 
 
@@ -245,9 +246,15 @@ class Model(nn.Module):
     def __init__(self, args, betas, loss_type: str, model_mean_type: str, model_var_type:str):
         super(Model, self).__init__()
         self.diffusion = GaussianDiffusion(betas, loss_type, model_mean_type, model_var_type)
-        
-        # DiT-3d
-        self.model = DiT3D_models[args.model_type](input_size=args.voxel_size, num_classes=args.num_classes)
+
+        if args.model_type in DiC3D_models:
+            self.model = DiC3D_models[args.model_type](
+                input_size=args.voxel_size,
+                in_channels=args.nc,
+                num_classes=args.num_classes,
+            )
+        else:
+            self.model = DiT3D_models[args.model_type](input_size=args.voxel_size, num_classes=args.num_classes)
 
     def prior_kl(self, x0):
         return self.diffusion._prior_bpd(x0)
@@ -593,7 +600,8 @@ def parse_args():
     parser.add_argument("--voxel_size", type=int, choices=[16, 32, 64], default=32)
 
     '''model'''
-    parser.add_argument("--model_type", type=str, choices=list(DiT3D_models.keys()), default="DiT-S/4")
+    model_choices = list(DiT3D_models.keys()) + list(DiC3D_models.keys())
+    parser.add_argument("--model_type", type=str, choices=model_choices, default="DiT-S/4")
     parser.add_argument('--beta_start', default=0.0001)
     parser.add_argument('--beta_end', default=0.02)
     parser.add_argument('--schedule_type', default='linear')
