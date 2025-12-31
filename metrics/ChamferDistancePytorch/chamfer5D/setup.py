@@ -10,7 +10,7 @@ setup(
         ]),
     ],
 
-    extra_cuda_cflags=['--compiler-bindir=/usr/bin/gcc', '-allow-unsupported-compiler'],
+    extra_cuda_cflags=['-allow-unsupported-compiler'],
     cmdclass={
         'build_ext': BuildExtension
     })
