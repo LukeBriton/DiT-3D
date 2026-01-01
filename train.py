@@ -488,6 +488,7 @@ class Model(nn.Module):
                 dic_in_channels=args.dic_in_channels,
                 dic_learn_sigma=args.dic_learn_sigma,
                 dic_use_gamma=args.dic_use_gamma,
+                dic3d_pos_embed_dim=args.dic3d_pos_embed_dim,
             )
         # elif args.window_size > 0:
         #     self.model = DiT3D_models_WindAttn[args.model_type](pretrained=args.use_pretrained, 
@@ -1031,6 +1032,7 @@ def parse_args():
     parser.add_argument('--dic_in_channels', type=int, default=None, help='input channels expected by DiC (defaults to --nc)')
     parser.add_argument('--dic_learn_sigma', action='store_true', default=False, help='use DiC learn_sigma (adapters will map output to --nc)')
     parser.add_argument('--dic_use_gamma', action='store_true', default=False, help='enable gamma scaling in DiC blocks')
+    parser.add_argument('--dic3d_pos_embed_dim', type=int, default=24, help='3D sin-cos positional channels for DiC3DConv (0 disables)')
 
     opt = parser.parse_args()
 

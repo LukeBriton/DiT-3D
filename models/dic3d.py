@@ -6,6 +6,7 @@ import torch.nn as nn
 
 from modules.voxelization import Voxelization
 import modules.functional as F
+from models.dic3d_conv import DiC3DConv_models
 
 
 def _ensure_dic_on_path():
@@ -41,6 +42,7 @@ class DiC3D(nn.Module):
         self.dic_learn_sigma = dic_learn_sigma
 
         self.voxelization = Voxelization(resolution=input_size, normalize=True, eps=0)
+        kwargs.pop("dic3d_pos_embed_dim", None)
         self.model = DiC_models[model_name](
             input_size=input_size,
             in_channels=self.dic_in_channels,
@@ -126,3 +128,4 @@ def _dic3d_builder(model_name):
 
 
 DiC3D_models = {name: _dic3d_builder(name) for name in DiC_models}
+DiC3D_models.update(DiC3DConv_models)
