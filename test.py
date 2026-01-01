@@ -1,5 +1,6 @@
 import os
 import torch
+import time
 
 from pprint import pprint
 from metrics.evaluation_metrics import jsd_between_point_cloud_sets as JSD
@@ -206,7 +207,8 @@ class GaussianDiffusion:
 
 
     def p_sample_loop(self, denoise_fn, shape, device, y,
-                      noise_fn=torch.randn, clip_denoised=True, keep_running=False):
+                      noise_fn=torch.randn, clip_denoised=True, keep_running=False,
+                      progress=False, progress_desc="Sampling"):
         """
         Generate samples
         keep_running: True if we run 2 x num_timesteps, False if we just run num_timesteps
@@ -215,7 +217,10 @@ class GaussianDiffusion:
 
         assert isinstance(shape, (tuple, list))
         img_t = noise_fn(size=shape, dtype=torch.float, device=device)
-        for t in reversed(range(0, self.num_timesteps if not keep_running else len(self.betas))):
+        steps = reversed(range(0, self.num_timesteps if not keep_running else len(self.betas)))
+        if progress:
+            steps = tqdm(steps, desc=progress_desc, leave=False)
+        for t in steps:
             t_ = torch.empty(shape[0], dtype=torch.int64, device=device).fill_(t)
             img_t = self.p_sample(denoise_fn=denoise_fn, data=img_t,t=t_, noise_fn=noise_fn, y=y,
                                   clip_denoised=clip_denoised, return_pred_xstart=False)
@@ -295,10 +300,12 @@ class Model(nn.Module):
 
     def gen_samples(self, shape, device, y, noise_fn=torch.randn,
                     clip_denoised=True,
-                    keep_running=False):
+                    keep_running=False,
+                    progress=False, progress_desc="Sampling"):
         return self.diffusion.p_sample_loop(self._denoise, shape=shape, device=device, y=y, noise_fn=noise_fn,
                                             clip_denoised=clip_denoised,
-                                            keep_running=keep_running)
+                                            keep_running=keep_running,
+                                            progress=progress, progress_desc=progress_desc)
 
     def gen_sample_traj(self, shape, device, y, freq, noise_fn=torch.randn,
                     clip_denoised=True,keep_running=False):
@@ -449,7 +456,19 @@ def generate_eval(model, opt, gpu, outf_syn, evaluator):
             m, s = data['mean'].float(), data['std'].float()
             y = data['cate_idx']
             
-            gen = model.gen_samples(x.shape, gpu, new_y_chain(gpu,y.shape[0],opt.num_classes), clip_denoised=False).detach().cpu()
+            progress = opt.sample_progress and (opt.distribution_type != 'multi' or opt.rank == 0)
+            step_desc = f"Sampling batch {i + 1}/{len(test_dataloader)}"
+            t0 = time.monotonic()
+            gen = model.gen_samples(
+                x.shape,
+                gpu,
+                new_y_chain(gpu, y.shape[0], opt.num_classes),
+                clip_denoised=False,
+                progress=progress,
+                progress_desc=step_desc,
+            ).detach().cpu()
+            if progress:
+                tqdm.write(f"{step_desc} done in {time.monotonic() - t0:.1f}s")
 
             gen = gen.transpose(1,2).contiguous()
             x = x.transpose(1,2).contiguous()
@@ -659,6 +678,8 @@ def parse_args():
 
     parser.add_argument('--eval_path',
                         default='')
+    parser.add_argument('--sample_progress', action='store_true', default=False,
+                        help='show diffusion step progress during sampling')
 
     parser.add_argument('--manualSeed', default=42, type=int, help='random seed')
 
