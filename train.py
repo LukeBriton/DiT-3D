@@ -98,6 +98,22 @@ def log_trainable_params(model, logger=None, header="PEFT"):
     return total
 
 
+def load_state_dict_filtered(model, state_dict):
+    model_state = model.state_dict()
+    filtered = {}
+    skipped = []
+    for key, value in state_dict.items():
+        if key not in model_state:
+            skipped.append(key)
+            continue
+        if model_state[key].shape != value.shape:
+            skipped.append(key)
+            continue
+        filtered[key] = value
+    msg = model.load_state_dict(filtered, strict=False)
+    return msg, skipped
+
+
 def rotation_matrix(axis, theta):
     """
     Return the rotation matrix associated with counterclockwise rotation about
@@ -726,8 +742,16 @@ def train(gpu, opt, output_dir, noises_init):
 
     if opt.model != '':
         ckpt = torch.load(opt.model)
-        model.load_state_dict(ckpt['model_state'])
-        optimizer.load_state_dict(ckpt['optimizer_state'])
+        msg, skipped = load_state_dict_filtered(model, ckpt['model_state'])
+        if should_diag and skipped:
+            logger.info(f"Resume load_state_dict skipped keys (shape/name mismatch): {len(skipped)}")
+        if should_diag and (msg.missing_keys or msg.unexpected_keys):
+            logger.info(f"Resume load_state_dict: missing={len(msg.missing_keys)} unexpected={len(msg.unexpected_keys)}")
+        try:
+            optimizer.load_state_dict(ckpt['optimizer_state'])
+        except Exception as exc:
+            if should_diag:
+                logger.info(f"Resume optimizer_state skipped: {exc}")
 
     if opt.model != '':
         start_epoch = torch.load(opt.model)['epoch'] + 1

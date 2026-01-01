@@ -571,7 +571,23 @@ def test(gpu, opt, output_dir):
             logger.info("Resume Path:%s" % opt.model)
 
         resumed_param = torch.load(opt.model)
-        model.load_state_dict(resumed_param['model_state'])
+        state = resumed_param["model_state"]
+        model_state = model.state_dict()
+        filtered = {}
+        skipped = []
+        for key, value in state.items():
+            if key not in model_state:
+                skipped.append(key)
+                continue
+            if model_state[key].shape != value.shape:
+                skipped.append(key)
+                continue
+            filtered[key] = value
+        msg = model.load_state_dict(filtered, strict=False)
+        if skipped:
+            logger.info(f"Test load_state_dict skipped keys (shape/name mismatch): {len(skipped)}")
+        if msg.missing_keys or msg.unexpected_keys:
+            logger.info(f"Test load_state_dict: missing={len(msg.missing_keys)} unexpected={len(msg.unexpected_keys)}")
 
         opt.eval_path = os.path.join(outf_syn, 'samples.pth')
         Path(opt.eval_path).parent.mkdir(parents=True, exist_ok=True)
