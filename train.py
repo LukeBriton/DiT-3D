@@ -47,6 +47,57 @@ def requires_grad(model, flag=True):
         p.requires_grad = flag
 
 
+def set_peft_trainable(model, allowlist=None):
+    """
+    Enable PEFT by only training parameters in allowlist.
+    Returns a list of trainable parameter names.
+    """
+    if allowlist is None:
+        allowlist = ()
+    trainable = []
+    for name, param in model.named_parameters():
+        param.requires_grad = any(key in name for key in allowlist)
+        if param.requires_grad:
+            trainable.append(name)
+    return trainable
+
+
+def get_peft_allowlist(mode):
+    if mode == "general":
+        return (
+            "adaLN_modulation",
+            ".affine.",
+            "norm",
+            "t_embedder",
+            "y_embedder",
+            "embedding_table",
+            "input_adapter",
+            "output_adapter",
+        )
+    if mode == "difffit":
+        return (
+            "bias",
+            "norm",
+            "gamma",
+            "affine",
+            "y_embedder",
+            "embedding_table",
+            "input_adapter",
+            "output_adapter",
+        )
+    raise ValueError(f"Unknown peft_mode: {mode}")
+
+
+def log_trainable_params(model, logger=None, header="PEFT"):
+    trainable = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
+    total = sum(p.numel() for _, p in trainable) / 1e6
+    log_fn = logger.info if logger is not None else print
+    log_fn(f"{header}: trainable_params_mb={total:.4f}, trainable_param_count={len(trainable)}")
+    for name, param in trainable:
+        log_fn(f"{header}: {name} {tuple(param.shape)}")
+    return total
+
+
 def rotation_matrix(axis, theta):
     """
     Return the rotation matrix associated with counterclockwise rotation about
@@ -656,12 +707,21 @@ def train(gpu, opt, output_dir, noises_init):
     if should_diag:
         logger.info(opt)
 
+    if opt.peft:
+        if should_diag and opt.model_type not in DiC3D_models:
+            logger.warning("PEFT allowlist is tuned for DiC-3D; continuing on non-DiC model.")
+        allowlist = get_peft_allowlist(opt.peft_mode)
+        set_peft_trainable(model, allowlist=allowlist)
+        if opt.peft_report and should_diag:
+            log_trainable_params(model, logger=logger, header=f"PEFT[{opt.peft_mode}]")
+
     print("Model = %s" % str(model))
     total_params = sum(param.numel() for param in model.parameters())/1e6
     print("Total_params = %s MB " % str(total_params))   
 
     # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
-    optimizer = torch.optim.AdamW(model.parameters(), lr=opt.lr, weight_decay=0)
+    opt_params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = torch.optim.AdamW(opt_params, lr=opt.lr, weight_decay=0)
 
     if opt.model != '':
         ckpt = torch.load(opt.model)
@@ -938,6 +998,9 @@ def parse_args():
     parser.add_argument('--use_tb', action='store_true', default=False, help = 'use tensorboard')
     parser.add_argument('--use_pretrained', action='store_true', default=False, help = 'use pretrained 2d DiT weights')
     parser.add_argument('--use_ema', action='store_true', default=False, help = 'use ema')
+    parser.add_argument('--peft', action='store_true', default=False, help='enable parameter-efficient fine-tuning')
+    parser.add_argument('--peft_mode', type=str, default='difffit', choices=['difffit', 'general'], help='select peft allowlist')
+    parser.add_argument('--peft_report', action='store_true', default=False, help='log the trainable parameter list and size')
     parser.add_argument('--dic_ckpt', default='', help='path to DiC checkpoint for DiC-3D initialization')
     parser.add_argument('--dic_use_ema', action='store_true', default=False, help='load ema weights from DiC ckpt if available')
     parser.add_argument('--dic_in_channels', type=int, default=None, help='input channels expected by DiC (defaults to --nc)')
