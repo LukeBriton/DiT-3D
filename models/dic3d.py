@@ -31,6 +31,7 @@ class DiC3D(nn.Module):
         num_classes=1,
         dic_in_channels=None,
         dic_learn_sigma=False,
+        dic_use_gamma=False,
         **kwargs
     ):
         super().__init__()
@@ -45,6 +46,7 @@ class DiC3D(nn.Module):
             in_channels=self.dic_in_channels,
             num_classes=num_classes,
             learn_sigma=dic_learn_sigma,
+            use_gamma=dic_use_gamma,
             **kwargs
         )
 

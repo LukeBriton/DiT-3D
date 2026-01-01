@@ -252,6 +252,7 @@ class Model(nn.Module):
                 input_size=args.voxel_size,
                 in_channels=args.nc,
                 num_classes=args.num_classes,
+                dic_use_gamma=args.dic_use_gamma,
             )
         else:
             self.model = DiT3D_models[args.model_type](input_size=args.voxel_size, num_classes=args.num_classes)
@@ -605,6 +606,7 @@ def parse_args():
     parser.add_argument('--beta_start', default=0.0001)
     parser.add_argument('--beta_end', default=0.02)
     parser.add_argument('--schedule_type', default='linear')
+    parser.add_argument('--dic_use_gamma', action='store_true', default=False, help='enable gamma scaling in DiC blocks')
     parser.add_argument('--time_num', type=int, default=1000)
 
     #params

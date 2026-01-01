@@ -240,7 +240,7 @@ class Upsample(nn.Module):
 class UNetBlock(torch.nn.Module):
     def __init__(self,
         in_channels, out_channels, emb_channels=None, dropout=0, skip_scale=1, eps=1e-5,
-        resample_filter=[1,1], resample_proj=False, adaptive_scale=1, blockconfig=0, actfunc='silu', actf=[1,1], affinef=2, norm_type='gnorm', norm_type1='gnorm', affine=1, actinada=0, init_zero=0, **kwargs
+        resample_filter=[1,1], resample_proj=False, adaptive_scale=1, blockconfig=0, actfunc='silu', actf=[1,1], affinef=2, norm_type='gnorm', norm_type1='gnorm', affine=1, actinada=0, init_zero=0, use_gamma=False, **kwargs
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -277,11 +277,13 @@ class UNetBlock(torch.nn.Module):
 
 
         self.conv1 = nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=1)
+        self.gamma = nn.Parameter(torch.ones(out_channels))
 
         self.skip = None
         self.act = nn.GELU if actfunc=='gelu' else nn.SiLU
         self.act0 = self.act() if actf[0] else nn.Identity()
         self.act1 = self.act() if actf[1] else nn.Identity()
+        self.use_gamma = use_gamma
 
         if out_channels != in_channels:
             self.skip = nn.Conv2d(in_channels, out_channels, kernel_size=1)
@@ -301,6 +303,8 @@ class UNetBlock(torch.nn.Module):
 
 
             x = self.conv1(F.dropout(x, p=self.dropout, training=self.training))
+            if self.use_gamma:
+                x = x * self.gamma.view(1, -1, 1, 1)
 
             x = (gate*x).add_(self.skip(orig) if self.skip is not None else orig)
             x = x * self.skip_scale
@@ -319,6 +323,8 @@ class UNetBlock(torch.nn.Module):
             x = self.act1(self.norm1(x))
         
             x = self.conv1(F.dropout(x, p=self.dropout, training=self.training))
+            if self.use_gamma:
+                x = x * self.gamma.view(1, -1, 1, 1)
             x = (gate*x).add_(self.skip(orig) if self.skip is not None else orig)
             x = x * self.skip_scale
         else:
@@ -354,6 +360,7 @@ class DiC(nn.Module):
         ffn_type='basic',
         mult_channels=[1,2,4,2,2],
         skip_stride=1,
+        use_gamma=False,
         **kwargs
     ):
         super().__init__()
@@ -394,6 +401,9 @@ class DiC(nn.Module):
         stages = self.levels - 1
 
         # encoder
+        kwargs = dict(kwargs)
+        kwargs["use_gamma"] = use_gamma
+
         for level_idx, mult, next_mult in zip(range(stages), mult_channels[:stages], mult_channels[1:stages+1]):
             channel_size = int(hidden_size * mult)
             self.enc_blocks.append(nn.ModuleList([
