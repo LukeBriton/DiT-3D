@@ -257,7 +257,10 @@ class Model(nn.Module):
                 input_size=args.voxel_size,
                 in_channels=args.nc,
                 num_classes=args.num_classes,
+                dic_in_channels=args.dic_in_channels,
+                dic_learn_sigma=args.dic_learn_sigma,
                 dic_use_gamma=args.dic_use_gamma,
+                dic3d_pos_embed_dim=args.dic3d_pos_embed_dim,
             )
         else:
             self.model = DiT3D_models[args.model_type](input_size=args.voxel_size, num_classes=args.num_classes)
@@ -643,6 +646,9 @@ def parse_args():
     parser.add_argument('--schedule_type', default='linear')
     parser.add_argument('--dic_use_gamma', action='store_true', default=False, help='enable gamma scaling in DiC blocks')
     parser.add_argument('--time_num', type=int, default=1000)
+    parser.add_argument('--dic_in_channels', type=int, default=None, help='input channels expected by DiC (defaults to --nc)')
+    parser.add_argument('--dic_learn_sigma', action='store_true', default=False, help='use DiC learn_sigma (adapters will map output to --nc)')
+    parser.add_argument('--dic3d_pos_embed_dim', type=int, default=24, help='3D sin-cos positional channels for DiC3DConv (0 disables)')
 
     #params
     parser.add_argument('--attention', default=True)
