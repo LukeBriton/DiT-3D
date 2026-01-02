@@ -180,10 +180,14 @@ def visualize_pointcloud(points, normals=None,
 
 def visualize_pointcloud_batch(path, pointclouds, pred_labels, labels, categories, vis_label=False, target=None,  elev=30, azim=225):
     batch_size = len(pointclouds)
-    fig = plt.figure(figsize=(20,20))
 
     ncols = int(np.sqrt(batch_size))
     nrows = max(1, (batch_size-1) // ncols+1)
+    base_cols, base_rows = 3, 4
+    base_width, base_height = 20, 20
+    fig = plt.figure(
+        figsize=(base_width * ncols / base_cols, base_height * nrows / base_rows)
+    )
     for idx, pc in enumerate(pointclouds):
         if vis_label:
             label = categories[labels[idx].item()]
