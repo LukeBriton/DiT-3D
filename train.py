@@ -5,6 +5,7 @@ import torch.utils.data
 
 import argparse
 from torch.distributions import Normal
+from torch.optim import lr_scheduler
 
 from utils.file_utils import *
 from utils.visualize import *
@@ -640,6 +641,30 @@ def get_dataloader(opt, train_dataset, test_dataset=None):
     return train_dataloader, test_dataloader, train_sampler, test_sampler
 
 
+def build_lr_scheduler(optimizer, opt):
+    if opt.lr_scheduler == "none":
+        return None
+    if opt.lr_scheduler == "step":
+        return lr_scheduler.StepLR(optimizer, step_size=opt.lr_step_size, gamma=opt.lr_gamma)
+    if opt.lr_scheduler == "exponential":
+        return lr_scheduler.ExponentialLR(optimizer, gamma=opt.lr_gamma)
+    if opt.lr_scheduler == "cosine":
+        return lr_scheduler.CosineAnnealingLR(optimizer, T_max=opt.lr_t_max, eta_min=opt.lr_min)
+    if opt.lr_scheduler == "cosine_restart":
+        return lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer, T_0=opt.lr_t_0, T_mult=opt.lr_t_mult, eta_min=opt.lr_min
+        )
+    if opt.lr_scheduler == "plateau":
+        return lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=opt.lr_plateau_factor,
+            patience=opt.lr_plateau_patience,
+            threshold=opt.lr_plateau_threshold,
+        )
+    raise ValueError(f"Unknown lr_scheduler: {opt.lr_scheduler}")
+
+
 def train(gpu, opt, output_dir, noises_init):
 
     set_seed(opt)
@@ -740,6 +765,7 @@ def train(gpu, opt, output_dir, noises_init):
     # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
     opt_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(opt_params, lr=opt.lr, weight_decay=0)
+    scheduler = build_lr_scheduler(optimizer, opt)
 
     if opt.model != '':
         ckpt = torch.load(opt.model)
@@ -776,6 +802,8 @@ def train(gpu, opt, output_dir, noises_init):
         if opt.distribution_type == 'multi':
             train_sampler.set_epoch(epoch)
 
+        epoch_loss_sum = 0.0
+        epoch_loss_count = 0
         for i, data in enumerate(dataloader):
 
             x = data['train_points'].transpose(1,2)
@@ -796,6 +824,8 @@ def train(gpu, opt, output_dir, noises_init):
                 y = y.cuda()
 
             loss = model.get_loss_iter(x, noises_batch, y).mean()
+            epoch_loss_sum += loss.item()
+            epoch_loss_count += 1
 
             optimizer.zero_grad()
             loss.backward()
@@ -821,6 +851,12 @@ def train(gpu, opt, output_dir, noises_init):
                         epoch, opt.niter, i, len(dataloader),loss.item()
                         ))
 
+        if scheduler is not None:
+            if isinstance(scheduler, lr_scheduler.ReduceLROnPlateau):
+                if epoch_loss_count > 0:
+                    scheduler.step(epoch_loss_sum / epoch_loss_count)
+            else:
+                scheduler.step()
 
         if (epoch + 1) % opt.diagIter == 0 and should_diag:
 
@@ -990,6 +1026,17 @@ def parse_args():
     parser.add_argument('--decay', type=float, default=0, help='weight decay for EBM')
     parser.add_argument('--grad_clip', type=float, default=None, help='weight decay for EBM')
     parser.add_argument('--lr_gamma', type=float, default=0.998, help='lr decay for EBM')
+    parser.add_argument('--lr_scheduler', type=str, default='none',
+                        choices=['none', 'step', 'exponential', 'cosine', 'cosine_restart', 'plateau'],
+                        help='learning rate scheduler type')
+    parser.add_argument('--lr_step_size', type=int, default=100, help='step size (epochs) for StepLR')
+    parser.add_argument('--lr_t_max', type=int, default=1000, help='T_max (epochs) for CosineAnnealingLR')
+    parser.add_argument('--lr_min', type=float, default=0.0, help='minimum lr for CosineAnnealingLR')
+    parser.add_argument('--lr_t_0', type=int, default=100, help='T_0 (epochs) for CosineAnnealingWarmRestarts')
+    parser.add_argument('--lr_t_mult', type=int, default=1, help='T_mult for CosineAnnealingWarmRestarts')
+    parser.add_argument('--lr_plateau_patience', type=int, default=10, help='patience (epochs) for ReduceLROnPlateau')
+    parser.add_argument('--lr_plateau_factor', type=float, default=0.1, help='factor for ReduceLROnPlateau')
+    parser.add_argument('--lr_plateau_threshold', type=float, default=1e-4, help='threshold for ReduceLROnPlateau')
 
     parser.add_argument('--model', default='', help="path to model (to continue training)")
 
