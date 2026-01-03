@@ -898,7 +898,9 @@ def train(gpu, opt, output_dir, noises_init):
                 del x_gen_eval
 
                 x_gen_list = model.gen_sample_traj(new_x_chain(x, 1).shape, x.device, new_y_chain(y,1,opt.num_classes), freq=40, clip_denoised=False)
-                x_gen_all = torch.cat(x_gen_list, dim=0)
+                x_gen_list_cpu = [t.detach().cpu() for t in x_gen_list]
+                del x_gen_list
+                x_gen_all = torch.cat(x_gen_list_cpu, dim=0)
 
                 gen_stats = [x_gen_eval_cpu.mean(), x_gen_eval_cpu.std()]
                 gen_eval_range = [x_gen_eval_cpu.min().item(), x_gen_eval_cpu.max().item()]
