@@ -765,7 +765,7 @@ def train(gpu, opt, output_dir, noises_init):
     # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
     opt_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(opt_params, lr=opt.lr, weight_decay=0)
-    scheduler = build_lr_scheduler(optimizer, opt)
+    scheduler = None
 
     if opt.model != '':
         ckpt = torch.load(opt.model)
@@ -779,6 +779,14 @@ def train(gpu, opt, output_dir, noises_init):
         except Exception as exc:
             if should_diag:
                 logger.info(f"Resume optimizer_state skipped: {exc}")
+
+    scheduler = build_lr_scheduler(optimizer, opt)
+    if opt.reset_scheduler:
+        for group in optimizer.param_groups:
+            group["lr"] = opt.lr
+        scheduler = build_lr_scheduler(optimizer, opt)
+        if should_diag:
+            logger.info(f"Resume: reset_scheduler=True, lr set to {opt.lr}.")
 
     if opt.model != '':
         start_epoch = torch.load(opt.model)['epoch'] + 1
@@ -1048,6 +1056,8 @@ def parse_args():
     parser.add_argument('--lr_plateau_threshold', type=float, default=1e-4, help='threshold for ReduceLROnPlateau')
 
     parser.add_argument('--model', default='', help="path to model (to continue training)")
+    parser.add_argument('--reset_scheduler', action='store_true', default=False,
+                        help='when resuming, reset lr and reinitialize the scheduler')
 
 
     '''distributed'''
