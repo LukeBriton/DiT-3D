@@ -901,6 +901,7 @@ def train(gpu, opt, output_dir, noises_init):
                 x_gen_list_cpu = [t.detach().cpu() for t in x_gen_list]
                 del x_gen_list
                 x_gen_all = torch.cat(x_gen_list_cpu, dim=0)
+                del x_gen_list_cpu
 
                 gen_stats = [x_gen_eval_cpu.mean(), x_gen_eval_cpu.std()]
                 gen_eval_range = [x_gen_eval_cpu.min().item(), x_gen_eval_cpu.max().item()]
@@ -916,11 +917,13 @@ def train(gpu, opt, output_dir, noises_init):
             visualize_pointcloud_batch('%s/epoch_%03d_samples_eval.png' % (outf_syn, epoch),
                                        x_gen_eval_cpu.transpose(1, 2), None, None,
                                        None)
+            del x_gen_eval_cpu
 
             visualize_pointcloud_batch('%s/epoch_%03d_samples_eval_all.png' % (outf_syn, epoch),
                                        x_gen_all.transpose(1, 2), None,
                                        None,
                                        None)
+            del x_gen_all
 
             visualize_pointcloud_batch('%s/epoch_%03d_x.png' % (outf_syn, epoch), x.transpose(1, 2), None,
                                        None,
