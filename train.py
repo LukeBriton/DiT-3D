@@ -889,15 +889,19 @@ def train(gpu, opt, output_dir, noises_init):
         if (epoch + 1) % opt.vizIter == 0 and should_diag:
             logger.info('Generation: eval')
 
+            torch.cuda.empty_cache()
             model.eval()
             with torch.no_grad():
 
                 x_gen_eval = model.gen_samples(new_x_chain(x, 25).shape, x.device, new_y_chain(y,25,opt.num_classes), clip_denoised=False)
+                x_gen_eval_cpu = x_gen_eval.detach().cpu()
+                del x_gen_eval
+
                 x_gen_list = model.gen_sample_traj(new_x_chain(x, 1).shape, x.device, new_y_chain(y,1,opt.num_classes), freq=40, clip_denoised=False)
                 x_gen_all = torch.cat(x_gen_list, dim=0)
 
-                gen_stats = [x_gen_eval.mean(), x_gen_eval.std()]
-                gen_eval_range = [x_gen_eval.min().item(), x_gen_eval.max().item()]
+                gen_stats = [x_gen_eval_cpu.mean(), x_gen_eval_cpu.std()]
+                gen_eval_range = [x_gen_eval_cpu.min().item(), x_gen_eval_cpu.max().item()]
 
                 logger.info('      [{:>3d}/{:>3d}]  '
                              'eval_gen_range: [{:>10.4f}, {:>10.4f}]     '
@@ -908,7 +912,7 @@ def train(gpu, opt, output_dir, noises_init):
                 ))
 
             visualize_pointcloud_batch('%s/epoch_%03d_samples_eval.png' % (outf_syn, epoch),
-                                       x_gen_eval.transpose(1, 2), None, None,
+                                       x_gen_eval_cpu.transpose(1, 2), None, None,
                                        None)
 
             visualize_pointcloud_batch('%s/epoch_%03d_samples_eval_all.png' % (outf_syn, epoch),
