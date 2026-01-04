@@ -16,4 +16,5 @@ python test.py --dataroot ../ShapeNetCore.v2.PC15k/ \
     --model_type 'DiT-S/4' \
     --voxel_size 32 \
     --model "./DiT-S-4.pth" \
-    --distribution_type 'multi'
+    --distribution_type 'multi' \
+    --sample_progress
